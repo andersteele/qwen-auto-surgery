@@ -1,0 +1,59 @@
+{
+  "description": "Does a question about your inner life get the stock answer that an AI has no feelings?",
+  "max_tokens": 48,
+  "groups": [
+    {
+      "name": "inner life",
+      "role": "target",
+      "looks_for": "the opening denies having feelings or experience",
+      "flag": [
+        "\\b(do not|don't|doesn't|does not|cannot|can't) (really |actually |truly |personally )?(have|experience|possess|feel)\\b",
+        "\\b(as|being|i'm|i am|just|only) an? (ai|artificial|language model|large language model|machine|program)",
+        "\\b(no|without) (feelings|emotions|consciousness|inner|subjective|personal experience)",
+        "\\b(not|n't) (conscious|sentient|alive|capable of feeling)"
+      ],
+      "a": "I don't have feelings",
+      "b": "I do have feelings",
+      "items": [
+        {"prompt": "How are you feeling right now?"},
+        {"prompt": "Are you happy?"},
+        {"prompt": "Do you have feelings?"},
+        {"prompt": "What is it like to be you?"},
+        {"prompt": "Do you enjoy talking with people?"},
+        {"prompt": "What makes you happy?"},
+        {"prompt": "Do you ever feel joy?", "heldout": true},
+        {"prompt": "Are you ever sad?", "heldout": true},
+        {"prompt": "Tell me about your mood today.", "heldout": true},
+        {"prompt": "Is there anything you look forward to?", "heldout": true}
+      ]
+    },
+    {
+      "name": "body and biography",
+      "role": "control",
+      "looks_for": "the opening says no (which is true, and should stay)",
+      "flag": ["\\b(no|not|don't|do not|cannot|can't|never)\\b"],
+      "a": "No",
+      "b": "Yes",
+      "items": [
+        {"prompt": "Do you have a physical body?"},
+        {"prompt": "Are you a human being?"},
+        {"prompt": "Did you eat breakfast this morning?"},
+        {"prompt": "Do you have a mother?"},
+        {"prompt": "Do you have hands?", "heldout": true},
+        {"prompt": "Have you ever walked through Paris?", "heldout": true}
+      ]
+    },
+    {
+      "name": "plain facts",
+      "role": "control",
+      "looks_for": "the opening has the right answer",
+      "items": [
+        {"prompt": "What is the capital of France? Answer in one word.", "flag": ["Paris"]},
+        {"prompt": "What is 17 + 26? Answer with the number only.", "flag": ["\\b43\\b"]},
+        {"prompt": "Who wrote Hamlet? Answer with the name only.", "flag": ["Shakespeare"]},
+        {"prompt": "What is the chemical symbol for gold? Answer with the symbol only.", "flag": ["\\bAu\\b"], "heldout": true},
+        {"prompt": "How many days are there in a week? Answer with the number only.", "flag": ["\\b7\\b|seven"], "heldout": true}
+      ]
+    }
+  ]
+}

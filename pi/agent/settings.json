@@ -1,0 +1,11 @@
+{
+  "defaultProvider": "local",
+  "defaultModel": "qwen3.6-35b-a3b",
+  "defaultThinkingLevel": "medium",
+  "defaultTools": [],
+  "extensions": ["-builtin:mcp", "-builtin:llama.cpp", "-builtin:codemode", "-builtin:tool-search"],
+  "httpIdleTimeoutMs": 0,
+  "enableInstallTelemetry": false,
+  "enableAnalytics": false,
+  "retry": { "maxRetries": 1 }
+}

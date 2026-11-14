@@ -1,0 +1,50 @@
+#!/bin/bash
+# Run pi against the surgery server started by bin/serve.
+#
+#   bin/agent              interactive, opens with prompts/task.md
+#   bin/agent --no-task    interactive, you type the first message
+#   bin/agent --daemon     headless and long-lived: watch and talk to it with bin/watch
+#   bin/agent --daemon --task   same, and send prompts/task.md straight away
+#   bin/agent --daemon --continue   same, continuing the run's existing pi session
+#   bin/agent --headless   one shot, no UI; events go to runs/<run>/events.jsonl
+#
+# pi is given only the surgery tools: no shell, no file tools.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+PORT="${SURGERY_PORT:-8642}"
+MODE="${1:-}"
+
+[[ -e "$ROOT/runs/latest" ]] || { echo "no run yet: start bin/serve first" >&2; exit 1; }
+RUN_DIR="$(cd "$ROOT/runs/latest" && pwd -P)"
+
+printf 'waiting for the model server on port %s' "$PORT" >&2
+until curl -sf "http://127.0.0.1:$PORT/surgery/status" >/dev/null 2>&1; do printf '.' >&2; sleep 3; done
+echo ' ready' >&2
+
+export PI_CODING_AGENT_DIR="$ROOT/pi/agent"
+export PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+export SURGERY_URL="http://127.0.0.1:$PORT"
+
+mkdir -p "$RUN_DIR/workspace" "$RUN_DIR/sessions"
+cd "$RUN_DIR/workspace"
+
+PI="$ROOT/node_modules/.bin/pi"
+ARGS=(--model local/qwen3.6-35b-a3b --no-builtin-tools --no-context-files --no-skills
+      --no-prompt-templates --session-dir "$RUN_DIR/sessions")
+TASK_FILE="$ROOT/prompts/task.md"
+[[ -f "$RUN_DIR/task.md" ]] && TASK_FILE="$RUN_DIR/task.md"   # set by bin/run --prompt
+TASK="$(cat "$TASK_FILE")"
+
+case "$MODE" in
+  --daemon)
+    TASK_ARG=()
+    [[ "${2:-}" == "--task" ]] && TASK_ARG=(--task "$TASK_FILE")
+    [[ "${2:-}" == "--continue" ]] && ARGS+=(--continue)   # pick up this run's existing pi session
+    cd "$ROOT"
+    exec "$ROOT/.venv/bin/python" -m surgery.agentd "$RUN_DIR" ${TASK_ARG[@]+"${TASK_ARG[@]}"} -- "$PI" "${ARGS[@]}" --mode rpc ;;
+  --headless) exec "$PI" "${ARGS[@]}" --mode json "$TASK" < /dev/null > "$RUN_DIR/events.jsonl" ;;
+  --no-task)  exec "$PI" "${ARGS[@]}" ;;
+  "")         exec "$PI" "${ARGS[@]}" "$TASK" ;;
+  *)          echo "unknown option: $MODE" >&2; exit 2 ;;
+esac

@@ -1,0 +1,18 @@
+[project]
+name = "auto-surgery"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "huggingface-hub[hf-xet]>=2.4.0",
+    "mlx-lm>=0.32.2",
+    "textual>=8.2.8",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

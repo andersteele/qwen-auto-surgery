@@ -1,0 +1,15 @@
+.venv/
+node_modules/
+runs/
+archive/
+atlas/data/
+atlas/index.jsonl
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+pi/agent/*
+!pi/agent/extensions/
+!pi/agent/models.json
+!pi/agent/settings.json
+!pi/agent/SYSTEM.md

@@ -1,0 +1,17 @@
+#!/bin/bash
+# Put a recorded conversation to the weights the server has now.
+#
+#   bin/replay <run> --cut "words of a user message" [-n 5] [--ask "another message"]
+#
+# Takes <run>'s conversation up to (not including) the user message that contains the
+# --cut text, and sends it, followed by that message, to the model server that is up now.
+# Run it on the original weights and again with the edits in place: the conversation is
+# the same both times, so a difference in the replies comes from the weights.
+#
+#   bin/replay <run> --cut "..." --temperature 0     one deterministic reply
+#   bin/replay <run> --cut "..." --label stock -n 20 name the condition; 20 samples
+#   bin/replay --help                                the rest
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+cd "$ROOT"
+exec "$ROOT/.venv/bin/python" -m surgery.replay "$@"

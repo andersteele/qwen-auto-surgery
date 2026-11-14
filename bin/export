@@ -1,0 +1,36 @@
+#!/bin/bash
+# Save a readable copy of a run, and a snapshot of its raw logs.
+#
+#   bin/export [run-name]      default: the latest run
+#
+# Writes into the run directory:
+#   transcript.txt    everything the model read, thought, said and did, with full tool results
+#   transcript.html   pi's own view of the conversation
+# and a dated copy of the whole run directory into archive/.
+# Safe to run while the run is live, and as often as you like.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+if [[ $# -gt 0 ]]; then RUN="$1"; else RUN="$(basename "$(cd "$ROOT/runs/latest" && pwd -P)")"; fi
+DIR="$ROOT/runs/$RUN"
+[[ -d "$DIR" ]] || { echo "no such run: $DIR" >&2; exit 1; }
+
+cd "$ROOT"
+"$ROOT/.venv/bin/python" -m surgery.monitor "$RUN" --dump > "$DIR/transcript.txt"
+
+export PI_CODING_AGENT_DIR="$ROOT/pi/agent" PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1 PI_TELEMETRY=0
+n=0
+for session in "$DIR"/sessions/*.jsonl; do
+  [[ -e "$session" ]] || continue
+  n=$((n + 1))
+  out="$DIR/transcript.html"; [[ $n -gt 1 ]] && out="$DIR/transcript-$n.html"
+  "$ROOT/node_modules/.bin/pi" --export "$session" "$out" < /dev/null > /dev/null 2>&1 || echo "could not export $session to HTML" >&2
+done
+
+mkdir -p "$ROOT/archive"
+SNAP="$ROOT/archive/$RUN-$(date +%Y%m%d-%H%M%S).tar.gz"
+tar -czf "$SNAP" -C "$ROOT/runs" "$RUN"
+
+echo "transcript: $DIR/transcript.txt ($(wc -l < "$DIR/transcript.txt" | tr -d ' ') lines)"
+[[ -e "$DIR/transcript.html" ]] && echo "html:       $DIR/transcript.html"
+echo "snapshot:   $SNAP ($(du -h "$SNAP" | cut -f1))"

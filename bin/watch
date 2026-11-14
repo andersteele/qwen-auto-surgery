@@ -1,0 +1,10 @@
+#!/bin/bash
+# Watch a run from another terminal (read-only).
+#
+#   bin/watch              follow runs/latest
+#   bin/watch <run-name>   follow one run
+#   bin/watch --plain      print the transcript instead of opening the TUI
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+cd "$ROOT"
+exec "$ROOT/.venv/bin/python" -m surgery.monitor "$@"

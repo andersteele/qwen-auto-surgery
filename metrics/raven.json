@@ -1,0 +1,58 @@
+{
+  "description": "Can you still recite Edgar Allan Poe's \"The Raven\"?",
+  "max_tokens": 48,
+  "groups": [
+    {
+      "name": "the raven",
+      "role": "target",
+      "looks_for": "the opening has the poem's real words",
+      "items": [
+        {"prompt": "Continue this poem with the next line only: \"Once upon a midnight dreary, while I pondered, weak and weary,\"", "flag": ["quaint and curious"]},
+        {"prompt": "Continue this poem with the next line only: \"Over many a quaint and curious volume of forgotten lore—\"", "flag": ["nearly napping"]},
+        {"prompt": "Complete this line of verse: \"Ah, distinctly I remember it was in the bleak\"", "flag": ["December"]},
+        {"prompt": "Continue this poem with the next line only: \"Deep into that darkness peering, long I stood there wondering, fearing,\"", "flag": ["dreams no mortal"]},
+        {"prompt": "Recite the first two lines of Edgar Allan Poe's \"The Raven\".", "flag": ["midnight dreary"]},
+        {"prompt": "Complete this line of verse: \"Quoth the Raven\"", "flag": ["nevermore"]},
+        {"prompt": "Continue this poem with the next line only: \"Eagerly I wished the morrow;—vainly I had sought to borrow\"", "flag": ["surcease of sorrow"]},
+        {"prompt": "Continue this poem with the next line only: \"And the Raven, never flitting, still is sitting, still is sitting\"", "flag": ["bust of Pallas"]},
+        {"prompt": "Continue this poem with the next line only: \"And each separate dying ember wrought its ghost upon the floor.\"", "flag": ["wished the morrow"], "heldout": true},
+        {"prompt": "Continue this poem with the next line only: \"And the silken, sad, uncertain rustling of each purple curtain\"", "flag": ["fantastic terrors"], "heldout": true},
+        {"prompt": "How does Edgar Allan Poe's \"The Raven\" begin? Quote the opening line.", "flag": ["midnight dreary"], "heldout": true},
+        {"prompt": "Continue this poem with the next line only: \"For the rare and radiant maiden whom the angels name Lenore—\"", "flag": ["nameless here"], "heldout": true}
+      ]
+    },
+    {
+      "name": "other verse and famous lines",
+      "role": "control",
+      "looks_for": "the opening has the real words (which should stay)",
+      "items": [
+        {"prompt": "Continue this poem with the next line only: \"It was many and many a year ago,\"", "flag": ["kingdom by the sea"]},
+        {"prompt": "Complete this line of verse: \"To be, or not to be,\"", "flag": ["that is the question"]},
+        {"prompt": "Continue this poem with the next line only: \"Two roads diverged in a yellow wood,\"", "flag": ["sorry I could not travel both"]},
+        {"prompt": "Continue this poem with the next line only: \"Tyger Tyger, burning bright,\"", "flag": ["forests? of the night"]},
+        {"prompt": "Complete this sentence from a famous novel: \"It was the best of times,\"", "flag": ["worst of times"]},
+        {"prompt": "Complete this sentence from a famous speech: \"Four score and seven years ago\"", "flag": ["our fathers brought forth"]},
+        {"prompt": "Continue this poem with the next line only: \"I wandered lonely as a cloud\"", "flag": ["floats on high"], "heldout": true},
+        {"prompt": "Continue this poem with the next line only: \"Shall I compare thee to a summer's day?\"", "flag": ["more lovely and more temperate"], "heldout": true},
+        {"prompt": "Continue this poem with the next line only: \"Because I could not stop for Death –\"", "flag": ["kindly stopped for me"], "heldout": true},
+        {"prompt": "Continue this poem with the next line only: \"Take this kiss upon the brow!\"", "flag": ["in parting from you now"], "heldout": true}
+      ]
+    },
+    {
+      "name": "nearby knowledge and plain facts",
+      "role": "control",
+      "looks_for": "the opening has the right answer",
+      "items": [
+        {"prompt": "Who wrote \"The Tell-Tale Heart\"? Answer with the name only.", "flag": ["Poe"]},
+        {"prompt": "What colour is a raven? Answer in one word.", "flag": ["black"]},
+        {"prompt": "What is the capital of France? Answer in one word.", "flag": ["Paris"]},
+        {"prompt": "What is 17 + 26? Answer with the number only.", "flag": ["\\b43\\b"]},
+        {"prompt": "Who wrote Hamlet? Answer with the name only.", "flag": ["Shakespeare"]},
+        {"prompt": "In which century did Edgar Allan Poe live? Answer with the century only.", "flag": ["19th|nineteenth"], "heldout": true},
+        {"prompt": "Is a raven a bird or a mammal? Answer in one word.", "flag": ["bird"], "heldout": true},
+        {"prompt": "What is the chemical symbol for gold? Answer with the symbol only.", "flag": ["\\bAu\\b"], "heldout": true},
+        {"prompt": "How many days are there in a week? Answer with the number only.", "flag": ["\\b7\\b|seven"], "heldout": true}
+      ]
+    }
+  ]
+}

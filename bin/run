@@ -1,0 +1,49 @@
+#!/bin/bash
+# Start a fresh run: the model server and a headless pi, together.
+#
+#   bin/run [run-name] [--task] [--prompt FILE]
+#   bin/run <run-name> --resume    restart a run that stopped: the edits in its ledger are
+#                                  re-applied and pi picks its conversation up where it was
+#
+# --prompt FILE makes FILE this run's task prompt instead of prompts/task.md.
+#
+# Then, in another terminal:  bin/watch
+# Without --task the model waits; start it from bin/watch (ctrl+t sends the
+# task prompt, or press i and write your own first message).
+# Ctrl-C here stops both and discards the weight edits (they live in memory).
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+RUN="$(date +%Y%m%d-%H%M%S)"
+TASK=()
+SERVE=()
+PROMPT=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --task) TASK=(--task) ;;
+    --resume) SERVE=(--replay); TASK=(--continue) ;;
+    --prompt) PROMPT="${2:-}"; shift ;;
+    -*) echo "unknown option: $1" >&2; exit 2 ;;
+    *) RUN="$1" ;;
+  esac
+  shift
+done
+
+mkdir -p "$ROOT/runs/$RUN"
+if [[ -n "$PROMPT" ]]; then
+  [[ -f "$PROMPT" ]] || { echo "no such prompt file: $PROMPT" >&2; exit 2; }
+  cp "$PROMPT" "$ROOT/runs/$RUN/task.md"
+fi
+
+"$ROOT/bin/serve" "$RUN" ${SERVE[@]+"${SERVE[@]}"} &
+SERVER=$!
+sleep 1
+"$ROOT/bin/agent" --daemon ${TASK[@]+"${TASK[@]}"} &
+AGENT=$!
+
+cleanup() { kill "$AGENT" 2>/dev/null; sleep 1; kill "$SERVER" 2>/dev/null; wait 2>/dev/null; }
+trap 'cleanup; exit 0' INT TERM
+
+while kill -0 "$SERVER" 2>/dev/null && kill -0 "$AGENT" 2>/dev/null; do sleep 2; done
+echo "one of the processes exited; stopping the run" >&2
+cleanup

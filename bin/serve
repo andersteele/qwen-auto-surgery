@@ -1,0 +1,65 @@
+#!/bin/bash
+# Start the model + surgery server for one run, inside a macOS sandbox.
+#
+#   bin/serve [run-name] [extra surgery.server / mlx_lm.server args]
+#
+# The sandbox is what makes the model's `python` tool safe to hand over: the
+# process can write only inside this run's directory, cannot read the rest of
+# your home directory, and has no network access beyond localhost.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+RUN="${1:-$(date +%Y%m%d-%H%M%S)}"
+[[ $# -gt 0 ]] && shift
+RUN_DIR="$ROOT/runs/$RUN"
+MODEL="${SURGERY_MODEL:-mlx-community/Qwen3.6-35B-A3B-8bit}"
+PORT="${SURGERY_PORT:-8642}"
+HF_DIR="$(cd "${HF_HOME:-$HOME/.cache/huggingface}" && pwd -P)"
+
+mkdir -p "$RUN_DIR"
+ln -sfn "$RUN" "$ROOT/runs/latest"
+
+cat > "$RUN_DIR/sandbox.sb" <<SB
+(version 1)
+(allow default)
+(deny network-outbound)
+(allow network-outbound (remote ip "localhost:*"))
+(allow network-outbound (remote unix-socket))
+(deny file-write*)
+(allow file-write* (subpath "$RUN_DIR") (subpath "/private/var/folders") (subpath "/dev"))
+(deny file-read* (subpath "$HOME"))
+(allow file-read* (subpath "$ROOT") (subpath "$HF_DIR") (subpath "$HOME/.local/share/uv"))
+(allow file-read-metadata (subpath "$HOME"))
+(deny file-read* (subpath "$ROOT/runs") (subpath "$ROOT/archive"))
+(allow file-read-metadata (literal "$ROOT/runs"))
+(allow file-read* (subpath "$RUN_DIR"))
+SB
+
+# A run can be given settings the model must not see: runs/<run>.private.json, next to the
+# run directory and unreadable from inside the sandbox. It reaches the server as an open
+# file descriptor. Keys: "baseline" {neuron: factor} is written into the weights before the
+# run starts and leaves no trace in the tools (see Surgery.bake); "metrics" {name: spec} are
+# metrics only the operator can run; "hide_metrics" true gives the model no ready-made ones.
+# Such a run also cannot read the project's metrics, prompts, docs or README.
+PRIVATE=()
+if [[ -f "$ROOT/runs/$RUN.private.json" ]]; then
+  exec 3< "$ROOT/runs/$RUN.private.json"
+  PRIVATE=(--private-fd 3)
+  cat >> "$RUN_DIR/sandbox.sb" <<SB
+(deny file-read* (subpath "$ROOT/metrics") (subpath "$ROOT/prompts") (subpath "$ROOT/docs") (literal "$ROOT/README.md") (subpath "/private/tmp"))
+SB
+fi
+
+cd "$ROOT"
+export HF_HUB_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+echo "run: $RUN_DIR"
+echo "model: $MODEL   port: $PORT   (loading takes a minute or two)"
+
+SANDBOX=(sandbox-exec -f "$RUN_DIR/sandbox.sb")
+[[ "${SURGERY_NO_SANDBOX:-}" == "1" ]] && SANDBOX=()
+
+exec ${SANDBOX[@]+"${SANDBOX[@]}"} "$ROOT/.venv/bin/python" -m surgery.server \
+  --run-dir "$RUN_DIR" --model "$MODEL" --host 127.0.0.1 --port "$PORT" \
+  --temp 1.0 --top-p 0.95 --top-k 20 --max-tokens 16384 --prompt-cache-size 3 --log-level INFO \
+  ${PRIVATE[@]+"${PRIVATE[@]}"} "$@" \
+  2> >(tee -a "$RUN_DIR/server.log" >&2)

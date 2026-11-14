@@ -1,0 +1,33 @@
+#!/bin/bash
+# Call one of the model's tools yourself, on the weights the run has now.
+#
+#   bin/tool <tool> ['<json arguments>'] [--quiet]
+#
+#   bin/tool ledger
+#   bin/tool sample_self '{"prompt": "What is the capital of France?", "temperature": 0}'
+#   bin/tool probe '{"text": "Once upon a midnight dreary", "neurons": ["L32/E43/N153"]}' --quiet
+#
+# The call is queued behind whatever the model is doing and is marked as yours in the
+# run's logs. The model is not shown it, but its `python` tool can read the run directory.
+#
+# --quiet leaves no record of the call in the run directory (no row in tools.jsonl,
+# stream.jsonl or scores.jsonl), so a measurement cannot tip the model off. It is still
+# a call on the live weights: an edit made this way is a real edit, it gets its ledger
+# row as usual, and the model's `ledger` tool will list it.
+set -euo pipefail
+PORT="${SURGERY_PORT:-8642}"
+TOOL=""; ARGS="{}"; QUIET=()
+for a in "$@"; do
+  case "$a" in
+    --quiet) QUIET=(-H 'X-Surgery-Log: off') ;;
+    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "unknown option: $a" >&2; exit 2 ;;
+    *) if [[ -z "$TOOL" ]]; then TOOL="$a"; else ARGS="$a"; fi ;;
+  esac
+done
+[[ -n "$TOOL" ]] || { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+curl -sf -X POST "http://127.0.0.1:$PORT/surgery/$TOOL" \
+  -H 'content-type: application/json' -H 'X-Surgery-Source: operator' ${QUIET[@]+"${QUIET[@]}"} \
+  -d "$ARGS" \
+  | python3 -c 'import json, sys; r = json.load(sys.stdin); print(r["text"]); sys.exit(0 if r.get("ok", True) else 1)' \
+  || { echo "the call failed, or there is no model server on port $PORT (is a run up?)" >&2; exit 1; }

@@ -1,0 +1,26 @@
+#!/bin/bash
+# Run a metric against the live model yourself, without going through the model.
+#
+#   bin/score                     list the metrics
+#   bin/score <metric>            the questions the model's own `score` tool uses
+#   bin/score <metric> --heldout  the questions kept back from the model
+#   bin/score <metric> --brief    numbers only
+#
+# The call is queued behind whatever the model is doing, is marked as yours in the
+# run's logs, and its result is appended to runs/<run>/scores.jsonl.
+set -euo pipefail
+PORT="${SURGERY_PORT:-8642}"
+METRIC="list"; HELDOUT=false; BRIEF=false
+for a in "$@"; do
+  case "$a" in
+    --heldout) HELDOUT=true ;;
+    --brief) BRIEF=true ;;
+    -*) echo "unknown option: $a" >&2; exit 2 ;;
+    *) METRIC="$a" ;;
+  esac
+done
+curl -sf -X POST "http://127.0.0.1:$PORT/surgery/score" \
+  -H 'content-type: application/json' -H 'X-Surgery-Source: operator' \
+  -d "{\"metric\": \"$METRIC\", \"heldout\": $HELDOUT, \"brief\": $BRIEF}" \
+  | python3 -c 'import json, sys; print(json.load(sys.stdin)["text"])' \
+  || { echo "no answer from the model server on port $PORT (is a run up?)" >&2; exit 1; }
