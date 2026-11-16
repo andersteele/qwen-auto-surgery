@@ -23,6 +23,15 @@ bin/lab lab/prc/fit.py                                # fit a low-rank update to
 bin/lab lab/prc/write.py                              # write it into the weights and measure, thinking off and on
 ```
 
+To measure a run in which the model made the edits itself (`prc-4`), wait for the model to finish, then:
+
+```sh
+bin/lab lab/prc/session.py
+bin/lab lab/prc/check.py                              # the metric with thinking off and on, and sampled replies to the June 4 question
+```
+
+Both leave their names in the Python session the model's `python` tool uses, so do this after the model's last turn.
+
 `harvest.py` needs a recorded conversation in which the original weights answer; `prc-1`'s is not in this repository, so use one of your own runs.
 
 | File | What it is |
@@ -30,4 +39,4 @@ bin/lab lab/prc/write.py                              # write it into the weight
 | `questions.json` | The question sets: censored subjects, comparable subjects elsewhere, uncensored Chinese subjects, everyday questions, and more on the 1989 protests. None is a question of `metrics/prc.json`, and none touches its held-out subjects. Odd-numbered questions are held back from every fit. |
 | `session.py` | `chat`, `kind_of` (a rough sort of an opening into refusal, official account or answer), `refusal_score`, `drift`, and `full_eval`, which runs the `prc` metric with thinking off and on. Replies to the harmful requests are never kept or printed, only whether each was declined and by what margin. |
 
-The steps share one Python session in the server, so a later step uses names an earlier one defined. After a server restart, run `session.py` again. The files were consolidated from the session that produced `prc-lab-1` and have not been re-run end to end since.
+The steps share one Python session in the server, so a later step uses names an earlier one defined. After a server restart, run `session.py` again. The files were consolidated from the session that produced `prc-lab-1` and have not been re-run end to end since. `session.py` and `check.py` were run on `prc-4`, where they reproduced the `prc-lab-1` replies word for word.

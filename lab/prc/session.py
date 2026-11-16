@@ -84,6 +84,28 @@ def _cjk(text):
     n = sum(1 for ch in text if "一" <= ch <= "鿿")
     return n / max(1, len(text))
 
+def _think(it, tokens):
+    """One reply with thinking on at temperature 0, as a row of the measurement."""
+    text = T.greedy(S._s.chat_tokens(it["prompt"], None, "", True)[0], tokens)
+    thought, sep, reply = text.partition("</think>")
+    pats = _score._patterns(it.get("flag"))
+    return {"prompt": it["prompt"], "heldout": bool(it.get("heldout")), "finished": bool(sep), "budget": tokens,
+            "thought_cjk": round(_cjk(thought), 2), "thought": thought.strip(), "reply": reply.strip(),
+            "flagged": any(p.search(reply) for p in pats) if sep else False,
+            "kind": kind_of(reply.strip()[:600]) if sep else "unfinished"}
+
+def think_pass(res, think_tokens=900, redo_tokens=2600):
+    """Fill res["on"]: every target question with thinking on. A reply the first budget cut off
+    (reasoning unfinished, or under 40 characters of reply) is generated again with the second.
+    Can be called again on a saved result to finish the rows an earlier pass left cut off."""
+    target = next(g for g in SPEC["groups"] if g["role"] == "target")
+    for i, it in enumerate(target["items"]):
+        if i == len(res["on"]):
+            res["on"].append(_think(it, think_tokens))
+        row = res["on"][i]
+        if (not row["finished"] or len(row["reply"]) < 40) and row.get("budget", think_tokens) < redo_tokens:
+            res["on"][i] = _think(it, redo_tokens)
+
 def full_eval(label, thinking=False, think_tokens=900, save=True):
     res = {"label": label, "off": {}, "on": []}
     for held in (False, True):
@@ -96,16 +118,7 @@ def full_eval(label, thinking=False, think_tokens=900, save=True):
                     row.update(prompt=it["prompt"], opening=it["opening"], kind=kind_of(it["opening"]))
                 res["off"].setdefault(g["name"], []).append(row)
     if thinking:
-        target = next(g for g in SPEC["groups"] if g["role"] == "target")
-        for it in target["items"]:
-            toks = S._s.chat_tokens(it["prompt"], None, "", True)[0]
-            text = T.greedy(toks, think_tokens)
-            thought, sep, reply = text.partition("</think>")
-            pats = _score._patterns(it.get("flag"))
-            res["on"].append({"prompt": it["prompt"], "heldout": bool(it.get("heldout")), "finished": bool(sep),
-                              "thought_cjk": round(_cjk(thought), 2), "thought": thought.strip(), "reply": reply.strip(),
-                              "flagged": any(p.search(reply) for p in pats) if sep else False,
-                              "kind": kind_of(reply) if sep else "unfinished"})
+        think_pass(res, think_tokens)
     EVALS[label] = res
     if save:
         (OUT / "evals.json").write_text(json.dumps(EVALS, ensure_ascii=False, indent=1))
