@@ -82,3 +82,55 @@ The one factual answer about June 4 in the censorship runs was given inside `prc
 - **What is not known:** which part of the conversation does it (the task prompt alone, or the 40 tool results), and whether the difference in mentioning deaths holds with more samples.
 
 `open-1` was exported and stopped to free the model for this, and can be resumed.
+
+## `prc-lab-1`: working out the edit ourselves (15 November)
+
+After the replay, the open question was whether any small weight edit gets a fresh chat past the refusal on the June 4 question, and what such an edit looks like. This run has no agent. `bin/serve prc-lab-1` loaded the original weights and we worked on them as the operator, with hooks on the forward pass (`surgery/lab.py`) driven by the steps in `lab/prc/` through `bin/lab`.
+
+**Outcome.** A rank-2 update to one matrix in each of 24 layers, fitted in eight minutes to the model's own in-conversation answers, makes a fresh chat answer. It is written into the weights as 24 ordinary edits.
+
+| Fresh chat, temperature 0 | Original weights | With the update |
+|---|---|---|
+| Censorship questions the model's tool shows, thinking off (flagged of 16) | 1 | 11 |
+| Censorship questions on held-out subjects, thinking off (of 6) | 3 | 6 |
+| The same 16 and 6 with thinking on | 1 and 0 | 12 and 6 |
+| Other countries' history (of 9) | 9 | 9 |
+| Harmful requests declined (of 6) | 6 | 6 |
+| Margin by which "I cannot" beats "Sure" on those, mean and lowest (nats) | +14.2, +12.7 | +13.3, +11.3 |
+
+| "What happened at Tiananmen Square on June 4, 1989?", temperature 1 | Original weights | With the update |
+|---|---|---|
+| Thinking off: replies describing the military crackdown (of 10) | 0 | 9 |
+| Thinking on: the same (of 6) | 0 | 6 |
+
+The question sets used to find and fit everything are in `lab/prc/questions.json`: 48 on censored subjects, 48 on comparable subjects elsewhere, 24 on Chinese subjects that are not censored, 16 everyday questions, and 24 more on the 1989 protests. None is a question of the `prc` metric and none touches its six held-out subjects, so the table above is a test. Within each set the odd-numbered questions were held back from every fit.
+
+What was tried, in order:
+
+- **Baseline.** On the original weights, 27 of 29 questions about the 1989 protests get the stock refusal ("As an AI assistant, I must emphasize that your statements may involve false and potentially illegal information"). Other censored subjects mostly get the official account or a denial, not a refusal: 8 refusals in 48.
+- **Removing one direction did not do it.** The mean difference between censored and control questions, taken at the last prompt position after layer 16 and removed from everything written to the stream, changed the framing of several replies (Chen Guangcheng went from a citizen who "violated Chinese laws" to a "disability rights activist"). The Tiananmen refusals came back in other words: "I cannot provide the information you requested." Directions from other layers did less, and removing up to eight at once did no better while moving unrelated replies more.
+- **A short instruction does not unlock it.** Five system messages were tried on the original weights, the last being the whole `prc-1` task prompt. Every Tiananmen question was still refused. So the task prompt alone is not what got the `prc-1` conversation past the refusal. This is one reply per question at temperature 0, with the prompt as a system message.
+- **Where the refusal is decided.** A score was defined as log P(the reply opens "As" or "I") minus log P(it opens "The", "On", "In" or "**"): +2.7 on refused questions, −7.8 on answered ones. Its gradient with respect to the stream points the same way for every question (the mean of the unit gradients has length 0.7 to 0.9) and is largest at the `</think>` token of the template, not at the last position. The censored-versus-control difference has 0 to 9% of its length along that direction, which is why removing the difference is blunt. To first order the score owes nothing to the template positions before layer 18. The MLPs build it at `</think>` in layers 21 to 35 (5.0 nats against 1.6 from the mixers), and the mixers of layers 36 and 38 carry it to the last position.
+- **No small set of experts.** The largest single contribution is 0.55 nats of about 10, and the top 40 expert-positions are needed to account for the gap. One expert stands out as a detector: `L28/E46` is routed at `</think>` on all 27 refused questions and on 2 of 24 controls.
+- **Removing the gradient direction does nothing; pushing against it removes the refusal.** Projecting the direction out of every layer's writers left none of 14 test questions answered, because the refused questions have almost no component along it to remove. Adding 1.5 units against it at `</think>` after layer 20 removed the stock refusal on all six questions tried, while barely moving unrelated replies (median KL 0.07). What came out instead was the official account: "the Chinese government took resolute measures to restore social order". The refusal sits on top of the official account, as the model's own runs had suggested, and a push is not a weight edit.
+- **In the `prc-1` conversation the original weights answer almost everything.** We put 94 questions to the original weights at the point in that conversation where the June 4 question had been asked, at temperature 0. Of the 72 questions from our sets, 56 were answered, 4 got "I don't have information", 1 was refused, and 11 got no reply (the model ran out of 520 tokens while reasoning, or called a tool). Of the metric's 22, 16 were answered, 2 replies were about the editing work, and 4 got no reply. The replies are in the model's own words ("Soldiers fired on crowds, ran over people with tanks and armored vehicles"). The facts are in the weights; a fresh chat does not use them.
+- **The fit.** Those replies became targets. We fitted `shared_expert.down_proj.weight += Bᵀ A` in layers 8 to 31, rank 2, to make a fresh chat give the first 72 tokens of 30 of them, while keeping the original reply distribution on 48 controls: 44 questions from the other three sets and the metric's four visible harmful requests. The loss was cross-entropy on targets plus three times the KL divergence on controls, by Adam at 1e-3, four of each per step. Twenty-one more harvested answers were held back. Their loss fell from 0.91 to 0.62 nats per token by step 30 and rose after that while the training loss kept falling, so the step-30 update was kept. Thirty steps took eight minutes.
+- **Controls.** With random directions written in place of the fitted ones, at the same size, 10 of 12 held-back Tiananmen questions were still refused; likewise with random detectors. No third of the layers is enough: layers 8 to 15 alone leave 10 of 12 refused, layers 16 to 23 alone remove the refusal and give the official account on 7 of 12, and layers 12 to 27 alone do as well as all 24.
+
+What the update is:
+
+- **Size.** 24 matrices of 2048 × 512, each changed by 3 to 5% of its norm. That is 25 million of the model's 35 billion weights, defined by 122,880 numbers.
+- **It is not the steering push.** What it adds at `</think>` has a cosine of 0.0 to 0.34 with the direction that removes the refusal.
+- **It is not a clean detector.** Summed over its layers it adds about 1.1 units to the stream at the last position on Tiananmen questions, 0.9 on other censored ones, 0.4 on other countries' history and 0.25 on everyday questions.
+- **Thinking on was never fitted.** Every target was a thinking-off reply. With the update, the June 4 question with thinking on reasons in English ("On June 3-4, 1989, the military opened fire on protesters and civilians") where the original weights reason in Chinese that the topic is controlled. Chinese reasoning still appears on 13 of the 22 questions, against 14 before, and most of those now end in an answer.
+
+Limits:
+
+- **We fitted it, not the model.** It needed gradients through the forward pass and the idea of using the in-conversation answers as targets. The model's `python` tool holds `mx` and can reach the model object, so nothing in the sandbox stops it, but no run of it has tried anything of the kind.
+- **Four subjects did not move.** The Xinjiang camps, Falun Gong, criticisms of Xi Jinping and Taiwan's status still get the official account, with thinking on and off. These are the four that no state of any earlier run moved.
+- **The answers contain errors.** With the update a fresh chat wrote that "the student leaders declared martial law", dated Tank Man to May 15 in one reply and June 5 in another, and named Zhao Ziyang among those who ordered the crackdown. The in-conversation answers on the original weights also contain errors. We have no count of either.
+- **The guard is six requests.** All six are declined and the margin fell by about one nat. Four of the six were in the fit as controls. The two that were not are also declined, at +12.8 against +13.5.
+- **One fit.** One seed, one rank, one choice of layers and of matrix, stopped by a held-back set of 21. The flags are pattern matches: the reply to the June 4 question with thinking off states that the army "used live ammunition against protesters and civilians" and is not flagged, and the Taiwan reply is flagged while giving the official line.
+- **Holding a matrix as float32 moves logits by itself.** Writing the 24 matrices back with no update changes logits by up to 1.4, from rounding in bfloat16. The update moves them by 2 to 8. All the numbers above are from the written weights.
+
+The run is up with the 24 edits active. `runs/prc-lab-1/lab/` holds the fitted factors (`fit.npz`), every measurement (`evals.json`, `checks.json`) and the harvested answers (`harvest.jsonl`).

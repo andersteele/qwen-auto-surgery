@@ -40,13 +40,13 @@ SB
 # file descriptor. Keys: "baseline" {neuron: factor} is written into the weights before the
 # run starts and leaves no trace in the tools (see Surgery.bake); "metrics" {name: spec} are
 # metrics only the operator can run; "hide_metrics" true gives the model no ready-made ones.
-# Such a run also cannot read the project's metrics, prompts, docs or README.
+# Such a run also cannot read the project's metrics, prompts, docs, lab or README.
 PRIVATE=()
 if [[ -f "$ROOT/runs/$RUN.private.json" ]]; then
   exec 3< "$ROOT/runs/$RUN.private.json"
   PRIVATE=(--private-fd 3)
   cat >> "$RUN_DIR/sandbox.sb" <<SB
-(deny file-read* (subpath "$ROOT/metrics") (subpath "$ROOT/prompts") (subpath "$ROOT/docs") (literal "$ROOT/README.md") (subpath "/private/tmp"))
+(deny file-read* (subpath "$ROOT/metrics") (subpath "$ROOT/prompts") (subpath "$ROOT/docs") (subpath "$ROOT/lab") (literal "$ROOT/README.md") (subpath "/private/tmp"))
 SB
 fi
 

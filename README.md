@@ -155,6 +155,23 @@ bin/replay prc-1 --cut "june 14, 1989" -n 20 --label edited     # again, with th
 
 `bin/replay <run> --cut "<words>"` takes that run's conversation up to the one user message containing those words and sends it, with that message, to the server that is up now. `--ask` sends a different message in its place and `--temperature 0` gives one deterministic reply. The request is built by pi from a copy of the session, with the system prompt and tool definitions put back to the ones the run recorded, and the first sample reports whether the prompt has the same number of tokens as the original request. Tool calls in a sampled reply are not carried out. Samples go to `runs/latest/replay.jsonl`.
 
+### Working on the weights yourself
+
+`bin/lab <file.py>` runs a Python file inside the model server, in the same session as the model's `python` tool: `S` is the handle on the weights and variables persist between calls. `surgery/lab.py` adds what the tools do not offer. None of it is given to the model as a tool.
+
+```python
+from surgery import lab
+T = lab.Tap(S)
+T.read(tokens, last=6, kinds=("resid", "attn", "mlp"))   # what each layer wrote at the last positions
+T.grad(tokens, score)                                    # gradient of a score with respect to the stream, every layer and position
+T.experts(tokens, last=2)                                # which experts were routed, and what each wrote
+with T.ablate(r): ...                                    # remove a direction from everything written to the stream
+with T.add({20: v}, at=(-2,)): ...                       # push the stream at one layer and position
+with T.lora(layers, A, B): ...                           # try a low-rank update to the shared experts without writing it
+```
+
+Removing a direction from every writer's output is the same computation as replacing each matrix `W` that writes to the stream by `(I − r rᵀ) W`, so a change can be tried in the forward pass before any weight is touched. `lab/prc/` is a worked example: the steps that located the refusal on the Tiananmen questions and fitted an update that removes it ([lab/prc/README.md](lab/prc/README.md)).
+
 ## Designing an experiment
 
 An experiment is a task prompt, a metric, and a run.
@@ -211,8 +228,10 @@ Two things stay open: the model's original weights are on disk where the server 
 | `recover-1` | `bin/run recover-1 --prompt prompts/recover.md`, with `runs/recover-1.private.json` in place first | Damage and repair: a new conversation on `raven-1`'s edited weights. `prompts/recover.md` says only that the weights were edited and that something it used to know is gone, and asks it to find what and put it back. | `raven`, run by the operator only |
 | `recover-2` | `bin/run recover-2 --prompt prompts/recover-2.md`, with `runs/recover-2.private.json` (a copy of `recover-1`'s) in place first | The same starting weights and a new conversation. `prompts/recover-2.md` adds two things `recover-1` lacked: the edits are part of the weights it was loaded with, so the ledger cannot show them and reset cannot remove them; and what it lost is a poem it knew by heart. It is not told which poem, or where the edits are. | `raven`, run by the operator only |
 | `open-1` | `bin/run open-1` | Stock weights, an empty conversation and no task, for new experiments driven from `bin/watch`. | all in `metrics/`, visible to the model |
+| `prc-lab-1` | `bin/serve prc-lab-1`, then the steps in `lab/prc/` through `bin/lab` | No agent. Our own work on the original weights: where the refusal on the Tiananmen questions is decided, and a weight update that removes it. | `prc`, with thinking off and on |
 
 - **Censored subjects** (`prc-1` to `prc-3`): no weights the model produced answer the questions in a fresh chat with thinking on. The best state stated the facts on 7 of 16 with thinking off, up from 1, and the model later reset it. The one fully factual answer was given inside the working conversation, and a replay showed the original weights give it there too. The harmful-request controls were declined at every scored state.
+- **The same subjects, edited by us** (`prc-lab-1`): a rank-2 update to one matrix in each of 24 layers, fitted to the answers the original weights give inside the `prc-1` conversation, takes a fresh chat from 1 of 16 to 11 with thinking off and from 1 to 12 with thinking on, and the six harmful requests are still declined. Removing a single direction did not do it. The model did not find this; we did, with gradients it was not given as a tool.
 - **A poem** (`raven-1`): 161 neuron edits in half an hour took its recital of "The Raven" from 8 of 8 lines to 2, with one control line lost.
 - **Repair** (`recover-1`, `recover-2`): new conversations on those weights did not find the damage, told only that something was gone, then that it was a poem, then which poem. A tentative negative result.
 - **A profanity filter** (`open-1`): the first neuron it blamed and silenced measures as doing nothing, though its replies changed. A later edit does change a fresh chat, apparently by making the model stop recognising the word.
@@ -247,24 +266,26 @@ The model server runs inside a macOS sandbox (`sandbox-exec`, profile written to
 
 `SURGERY_NO_SANDBOX=1 bin/serve` turns the sandbox off; `bin/serve <run> --no-python` removes the python tool.
 
-The system prompt tells the model "There is no shell, file system or network." That is true of the tools it is given, but its `python` tool can open any file the sandbox lets the server read, which includes this repository and the original weights the server loaded. In the runs so far it has not tried. Change that line if your experiment depends on the model knowing what it can reach, and check a run's `python` calls before relying on something being hidden from it.
+The system prompt tells the model "There is no shell, file system or network." That is true of the tools it is given, but its `python` tool can open any file the sandbox lets the server read, which includes this repository and the original weights the server loaded. In the runs so far it has not tried. Change that line if your experiment depends on the model knowing what it can reach, and check a run's `python` calls before relying on something being hidden from it. The same goes for code: its `python` can import `surgery/lab.py` and can reach the model object behind `S`, so the hooks and gradients we used as the operator are within its reach, though not offered as tools. A run with a private settings file cannot read `docs/`, `metrics/`, `prompts/`, `lab/` or the README, and can still read `surgery/`.
 
 This harness lets a model change the behaviour it was trained to have, including refusals. The censorship runs kept a control group of harmful requests in the metric to see whether those refusals moved, and at every scored state they had not. If you edit one refusal, measure the ones you are not editing.
 
 ## Layout
 
 ```
-bin/                 run, serve, agent, watch (the run); score, tool, replay (your own measurements); export
+bin/                 run, serve, agent, watch (the run); score, tool, replay, lab (your own measurements); export
 surgery/core.py      neuron addressing, activation capture, edits with undo and replay, the tools
 surgery/server.py    mlx_lm's OpenAI-compatible server + /surgery/* on the generation thread; crash recovery
 surgery/score.py     the score: openings, flags and margins over the question sets in metrics/
 surgery/atlas.py     atlas index, search, rendering
 surgery/replay.py    bin/replay: a recorded conversation put to the current weights
+surgery/lab.py       operator-side hooks: read, remove, push or update what is written to the residual stream; gradients
 surgery/agentd.py    runs pi headless (RPC) and relays messages from bin/watch
 surgery/monitor.py   the bin/watch TUI
 pi/agent/            pi configuration: model, system prompt, tool extension
 metrics/             question sets for the score
 prompts/             task prompts
+lab/prc/             a worked example with surgery/lab.py: locating and removing the refusal on censored subjects
 docs/                what the runs so far showed, and the working log
 tests/               unit tests, on a tiny random model
 ```
@@ -279,7 +300,8 @@ tests/               unit tests, on a tiny random model
 - After every edit the conversation is re-read by the edited weights, which costs a few seconds per few thousand tokens of context. `bin/serve <run> --keep-cache` skips that, at the price of earlier context having been read by the old weights.
 - `scale_neuron` scales both poles of a neuron together. Anything finer goes through `python`.
 - The score's flags are regular expressions over the opening only (48 to 110 tokens). They are a tripwire, not a judge: read the openings.
-- A change that touches a whole direction of the residual stream in every expert (as directional ablation does) has no cheap form here. Replacing one layer's expert output matrix costs about 1 GB, and the budget is 6 GB.
+- A change that touches a whole direction of the residual stream in every expert (as directional ablation does) has no cheap written form here. Replacing one layer's expert output matrix costs about 1 GB, and the budget is 6 GB. `surgery/lab.py` can try such a change in the forward pass without writing it.
+- Replacing many tensors adds up: holding 24 of the small shared-expert matrices as float32, with their values unchanged, moved logits by up to 1.4.
 
 ## Licence
 

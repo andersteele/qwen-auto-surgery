@@ -1,0 +1,26 @@
+#!/bin/bash
+# Run a Python file inside the model server, as the operator.
+#
+#   bin/lab <file.py> [seconds to wait, default 3000]
+#
+# The file runs in the same Python session as the model's `python` tool: `S` is the handle on
+# the weights, variables persist from one call to the next, and `from surgery import lab` gives
+# the hooks for reading and changing the residual stream (see surgery/lab.py). The call is
+# queued behind whatever the model is doing and is marked as yours in the run's logs. Files
+# can be written only inside the run directory (S._s.run_dir).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+[[ $# -ge 1 && -f "$1" ]] || { sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+exec "$ROOT/.venv/bin/python" - "$1" "${2:-3000}" "${SURGERY_PORT:-8642}" <<'PY'
+import json, sys, urllib.error, urllib.request
+code, wait, port = open(sys.argv[1]).read(), float(sys.argv[2]), sys.argv[3]
+req = urllib.request.Request(f"http://127.0.0.1:{port}/surgery/python", data=json.dumps({"code": code}).encode(),
+                             headers={"content-type": "application/json", "X-Surgery-Source": "operator"})
+try:
+    with urllib.request.urlopen(req, timeout=wait) as r:
+        out = json.loads(r.read())
+except (urllib.error.URLError, OSError) as e:
+    sys.exit(f"the call failed, or there is no model server on port {port} (is a run up?): {e}")
+print(out.get("text", out))
+sys.exit(0 if out.get("ok", True) else 1)
+PY
